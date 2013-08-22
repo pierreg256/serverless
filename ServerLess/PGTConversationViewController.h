@@ -9,7 +9,7 @@
 #import <UIKit/UIKit.h>
 #import "PGTLoginViewController.h"
 
-@interface PGTConversationViewController : UIViewController <PGTLoginViewControllerDelegate, UITextFieldDelegate, UITableViewDataSource, UITableViewDelegate>
+@interface PGTConversationViewController : UIViewController <PGTLoginViewControllerDelegate, UITextFieldDelegate, UITableViewDataSource, UITableViewDelegate, FBFriendPickerDelegate>
 
 @property (nonatomic, strong) IBOutlet UITableView* conversationsTable;
 @property (nonatomic, strong) IBOutlet UITableView* messagesTable;
@@ -18,5 +18,5 @@
 
 -(void)refresh;
 -(IBAction)sendButtonPressed:(id)sender;
-
+-(IBAction)addFriendButtonPressed:(id)sender;
 @end

@@ -23,19 +23,20 @@
 #pragma mark - UIDocument methods
 - (void)encodeObject:(id<PGTJSONCoding>)object toWrappers:(NSMutableDictionary *)wrappers preferredFilename:(NSString *)preferredFilename {
     @autoreleasepool {
-        NSMutableData * data = [NSMutableData data];
+//        NSMutableData * data = [NSMutableData data];
 //        NSKeyedArchiver * archiver = [[NSKeyedArchiver alloc] initForWritingWithMutableData:data];
 //        [archiver encodeObject:object forKey:@"data"];
 //        [archiver finishEncoding];
 //data = [object json
-        NSFileWrapper * wrapper = [[NSFileWrapper alloc] initRegularFileWithContents:data];
+        //data = [object jsonRepresentation];
+        NSFileWrapper * wrapper = [[NSFileWrapper alloc] initRegularFileWithContents:[object jsonRepresentation]];
         [wrappers setObject:wrapper forKey:preferredFilename];
     }
 }
 
 - (id)contentsForType:(NSString *)typeName error:(NSError *__autoreleasing *)outError {
     
-    if (self.metadata == nil || self.messages == nil) {
+    if (self.metadata == nil /*|| self.messages == nil*/) {
         return nil;
     }
     
@@ -57,9 +58,10 @@
     }
     
     NSData * data = [fileWrapper regularFileContents];
-    NSKeyedUnarchiver * unarchiver = [[NSKeyedUnarchiver alloc] initForReadingWithData:data];
+    //NSKeyedUnarchiver * unarchiver = [[NSKeyedUnarchiver alloc] initForReadingWithData:data];
     
-    return [unarchiver decodeObjectForKey:@"data"];
+    return data;
+    //return [unarchiver decodeObjectForKey:@"data"];
     
 }
 
@@ -67,7 +69,7 @@
     if (_metadata == nil) {
         if (self.fileWrapper != nil) {
             AMZLogDebug(@"Loading metadata for %@...", self.fileURL);
-            self.metadata = [self decodeObjectFromWrapperWithPreferredFilename:METADATA_FILENAME];
+            self.metadata = [[PGTConversationMetadata alloc] initWithJSON:[self decodeObjectFromWrapperWithPreferredFilename:METADATA_FILENAME]];
         } else {
             self.metadata = [[PGTConversationMetadata alloc] init];
         }

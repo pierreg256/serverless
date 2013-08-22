@@ -8,9 +8,11 @@
 
 #import <UIKit/UIKit.h>
 #import <FacebookSDK/FacebookSDK.h>
+#import "PGTConversationMetadata.h"
 
 @interface PGTConversationCell : UITableViewCell
 
 @property (nonatomic, strong) IBOutlet FBProfilePictureView* thumb;
 
+-(void)setConversation:(PGTConversationMetadata*)conversation;
 @end

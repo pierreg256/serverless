@@ -13,6 +13,7 @@
 #import <AWSS3/AWSS3.h>
 #import "PGTLoginViewController.h"
 #import "PGTConversationCell.h"
+#import "PGTConversationMetadata.h"
 #import "PGTMessage.h"
 #import "PGTConversation.h"
 
@@ -41,9 +42,12 @@
     [super viewDidLoad];
 	// Do any additional setup after loading the view.
     
+    self.conversations = [[NSMutableArray alloc] initWithCapacity:10];
     [self registerForKeyboardNotifications];
     
     [[AmazonClientManager sharedInstance] reloadFBSession];
+    
+    
 
 }
 
@@ -53,7 +57,7 @@
     if ([AmazonClientManager sharedInstance].isLoggedIn) {
         // To-do, show logged in view
         AMZLogDebug(@"Logged In!");
-        [self refresh];
+        //[self refresh];
     } else {
         // No, display the login page.
         //[self showLoginView];
@@ -79,7 +83,7 @@
 
 
 - (void)loadLocal {
-    
+    AMZLogDebug(@"");
     NSArray * localDocuments = [[NSFileManager defaultManager] contentsOfDirectoryAtURL:self.localRoot includingPropertiesForKeys:nil options:0 error:nil];
     AMZLogDebug(@"Found %d local files.", localDocuments.count);
     for (int i=0; i < localDocuments.count; i++) {
@@ -122,12 +126,34 @@
     _messageField.text = @"";
 }
 
+-(IBAction)addFriendButtonPressed:(id)sender
+{
+    AMZLogDebug(@"");
+    
+    // Initialize the friend picker
+    FBFriendPickerViewController *friendPickerController =
+    [[FBFriendPickerViewController alloc] init];
+    // Set the friend picker title
+    friendPickerController.title = @"Pick Friends";
+    friendPickerController.session = [AmazonClientManager sharedInstance].session;
+    friendPickerController.delegate = self;
+    
+    // TODO: Set up the delegate to handle picker callbacks, ex: Done/Cancel button
+    
+    // Load the friend data
+    [friendPickerController loadData];
+    // Show the picker modally
+    [friendPickerController presentModallyFromViewController:self animated:YES handler:nil];
+}
+
+
 #pragma mark - PGTLoginViewController Delegate methods
 -(void)loginControllerDidLoginSuccessfully:(PGTLoginViewController *)controller
 {
     AMZLogDebug(@"");
     [self dismissViewControllerAnimated:YES completion:nil];
-    [_conversationsTable reloadData];
+    [self refresh];
+    //[_conversationsTable reloadData];
 }
 
 -(void)loginControllerDidNotLogin:(PGTLoginViewController *)controller withError:(NSString *)message
@@ -230,7 +256,7 @@
 {
    
     if (tableView == _conversationsTable)
-        return 1;
+        return _conversations.count;
     
     return 0;
 }
@@ -239,9 +265,12 @@
 {
     if (tableView == _conversationsTable) {
         PGTConversationCell* cell = [tableView dequeueReusableCellWithIdentifier:@"ConversationCell"];
-        
-        cell.thumb.profileID = [AmazonClientManager sharedInstance].profileID;
-        
+
+        cell.thumb.profileID = @"100000110502374"; //[AmazonClientManager sharedInstance].profileID;
+//        cell.thumb.profileID = [[[self.conversations objectAtIndex:[indexPath row]] friendAtIndex:0] objectForKey:@"id"];
+        AMZLogDebug(@"conversation: %@", [self.conversations objectAtIndex:[indexPath row]]);
+        AMZLogDebug(@"conversation friends: %@", [[self.conversations objectAtIndex:[indexPath row]] friends]);
+        //[cell setConversation:[self.conversations objectAtIndex:[indexPath row]]];
         return cell;
     }
     return nil;
@@ -326,10 +355,110 @@
             
             // Add to the list of files on main thread
             dispatch_async(dispatch_get_main_queue(), ^{
-                //[self addOrUpdateEntryWithURL:fileURL metadata:metadata state:state version:version];
+                [self addOrUpdateEntryWithID:metadata.id metadata:metadata state:state version:version];
             });
         }];             
     }];
     
+}
+#pragma mark Entry management methods
+
+- (int)indexOfEntryWithID:(NSString *)conversationID {
+    __block int retval = -1;
+    [_conversations enumerateObjectsUsingBlock:^(PGTConversationMetadata * entry, NSUInteger idx, BOOL *stop) {
+        if ([entry.id isEqual:conversationID]) {
+            retval = idx;
+            *stop = YES;
+        }
+    }];
+    return retval;
+}
+
+- (void)addOrUpdateEntryWithID:(NSString *)conversationID metadata:(PGTConversationMetadata *)metadata state:(UIDocumentState)state version:(NSFileVersion *)version {
+    
+    int index = [self indexOfEntryWithID:conversationID];
+    
+    // Not found, so add
+    if (index == -1) {
+        
+        //PTKEntry * entry = [[PTKEntry alloc] initWithFileURL:fileURL metadata:metadata state:state version:version];
+        
+        [self.conversations addObject:metadata];
+        [self.conversationsTable  insertRowsAtIndexPaths:[NSArray arrayWithObject:[NSIndexPath indexPathForRow:(self.conversations.count - 1) inSection:0]] withRowAnimation:UITableViewRowAnimationRight];
+        
+    }
+    
+    // Found, so edit
+    else {
+        
+//        PTKEntry * entry = [_objects objectAtIndex:index];
+//        entry.metadata = metadata;
+//        entry.state = state;
+//        entry.version = version;
+        
+        [self.conversationsTable reloadRowsAtIndexPaths:[NSArray arrayWithObject:[NSIndexPath indexPathForRow:index inSection:0]] withRowAnimation:UITableViewRowAnimationNone];
+        
+    }
+    
+}
+
+#pragma mark - FBFriendPickerDelegate delegate methods
+/*
+ * Event: Done button clicked
+ */
+- (void)facebookViewControllerDoneWasPressed:(id)sender {
+    FBFriendPickerViewController *friendPickerController =
+    (FBFriendPickerViewController*)sender;
+    NSLog(@"Selected friends: %@", friendPickerController.selection);
+    
+    FBGraphObject* friend = [friendPickerController.selection objectAtIndex:0];
+    AMZLogDebug(@"selected id: %@", [friend objectForKey:@"id"] );
+    
+    [[sender presentingViewController] dismissViewControllerAnimated:YES completion:nil];
+
+    BOOL found=NO;
+    NSUInteger index = 0;
+    for (PGTConversationMetadata* meta in _conversations) {
+        if ([meta hasFriendWithID:[friend objectForKey:@"id"]]) {
+            found = YES;
+            break;
+        }
+        index++;
+    }
+    
+    if (found) {
+        // NOP
+    } else {
+        NSURL* url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/%@.%@", [self localRoot], [[NSUUID UUID] UUIDString], PGT_EXTENSION ]];
+        
+        AMZLogDebug(@"creating file: %@", url);
+        
+        PGTConversation* newConversation = [[PGTConversation alloc] initWithFileURL:url];
+        newConversation.metadata.description = [friend objectForKey:@"name"];
+        [newConversation.metadata addFriend:friend];
+        [newConversation saveToURL:url forSaveOperation:UIDocumentSaveForCreating completionHandler:^(BOOL success) {
+            AMZLogDebug(@"Document saved %@", (success?@"successfully":@"with error"));
+        }];
+        //PGTConversationMetadata* meta = [[PGTConversationMetadata alloc] init];
+        //meta.id = [friend objectForKey:@"id"];
+        //meta.description = [friend objectForKey:@"name"];
+        //[_conversations addObject:meta];
+        //index = _conversations.count-1;
+        //[_conversationsTable reloadData];
+        [self addOrUpdateEntryWithID:newConversation.metadata.id metadata:newConversation.metadata state:newConversation.documentState version:nil];
+    }
+    //[_conversationsTable selectRowAtIndexPath:[NSIndexPath indexPathForRow:index inSection:0] animated:YES scrollPosition:UITableViewScrollPositionBottom];
+    
+    // Dismiss the friend picker
+//    [[sender presentingViewController] dismissModalViewControllerAnimated:YES];
+}
+
+/*
+ * Event: Cancel button clicked
+ */
+- (void)facebookViewControllerCancelWasPressed:(id)sender {
+    NSLog(@"Canceled");
+    // Dismiss the friend picker
+    [[sender presentingViewController] dismissViewControllerAnimated:YES completion:nil];
 }
 @end
